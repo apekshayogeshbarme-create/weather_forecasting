@@ -1,0 +1,285 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyCast Farmer Weather</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:20px;min-height:100vh;color:white;
+ font-family:Arial,sans-serif;
+ background:linear-gradient(140deg,#102747,#176b83,#54b8ba);
+}
+main{max-width:1000px;margin:auto}
+header,.top,.stats{display:flex;gap:12px;align-items:center;
+ justify-content:space-between;flex-wrap:wrap}
+header{margin-bottom:20px}
+h1{font-size:27px}
+select,input,button{
+ padding:12px;border:0;border-radius:10px;font-size:15px
+}
+button{background:#d6ffbd;color:#17442d;font-weight:bold;cursor:pointer}
+input{width:min(220px,100%)}
+.panel{
+ margin:16px 0;padding:22px;border-radius:20px;
+ background:rgba(255,255,255,.13);
+ border:1px solid rgba(255,255,255,.18)
+}
+#temp{font-size:65px;font-weight:bold;margin:12px 0}
+#weatherIcon{font-size:65px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:20px}
+.stat{padding:15px;background:#ffffff16;border-radius:14px}
+.stat b{display:block;font-size:21px;margin-top:10px}
+.alert{padding:14px;margin:10px 0;border-radius:12px;background:#ffffff16}
+.alert b{display:block;margin-bottom:6px}
+.forecast{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.day{padding:12px 5px;border-radius:12px;background:#ffffff16;text-align:center}
+.day .emoji{font-size:25px;margin:10px 0}
+.small{font-size:13px;opacity:.85}
+#status{line-height:1.5}
+@media(max-width:650px){
+ body{padding:12px}
+ .stats{grid-template-columns:1fr}
+ .forecast{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #temp{font-size:52px}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <h1>🌦️ SkyCast Farmer</h1>
+ <select id="language" aria-label="Select language">
+  <option value="mr">मराठी</option>
+  <option value="hi">हिन्दी</option>
+  <option value="en">English</option>
+ </select>
+</header>
+
+<section class="panel">
+ <div class="top">
+  <div>
+   <p id="todayLabel">शेतकरी हवामान माहिती</p>
+   <h2 id="place">Nanded</h2>
+   <div id="temp">--°C</div>
+   <h3 id="condition">हवामान लोड होत आहे...</h3>
+   <p id="feels">--</p>
+  </div>
+  <div id="weatherIcon">🌤️</div>
+ </div>
+ <div class="top">
+  <input id="city" value="Nanded" placeholder="शहराचे नाव">
+  <button id="search" onclick="loadWeather()">शोधा</button>
+ </div>
+ <div class="stats">
+  <div class="stat">💧 <span data-i="humidity">आर्द्रता</span><b id="humidity">--%</b></div>
+  <div class="stat">💨 <span data-i="wind">वाऱ्याचा वेग</span><b id="wind">-- km/h</b></div>
+  <div class="stat">🌧️ <span data-i="rain">पाऊस</span><b id="rain">-- mm</b></div>
+ </div>
+</section>
+
+<section class="panel">
+ <h2 id="alertsTitle">🚨 शेतकरी सूचना</h2>
+ <div id="alerts"></div>
+ <p id="status" class="small" aria-live="polite"></p>
+</section>
+
+<section class="panel">
+ <h2 id="forecastTitle">📅 ७ दिवसांचा हवामान अंदाज</h2>
+ <div id="forecast" class="forecast"></div>
+</section>
+</main>
+
+<script>
+const translations={
+ mr:{
+  title:"शेतकरी हवामान माहिती",search:"शोधा",city:"शहराचे नाव",
+  humidity:"आर्द्रता",wind:"वाऱ्याचा वेग",rain:"पाऊस",
+  alerts:"🚨 शेतकरी सूचना",forecast:"📅 ७ दिवसांचा हवामान अंदाज",
+  loading:"हवामान लोड होत आहे...",feels:"जाणवणारे तापमान",
+  error:"हवामान मिळाले नाही. इंटरनेट किंवा शहराचे नाव तपासा.",
+  rainAlert:"पावसाचा इशारा",windAlert:"वाऱ्याचा इशारा",
+  tempAlert:"तापमानाचा इशारा",highRain:"पावसाची शक्यता जास्त आहे. शेतातील पाण्याचा निचरा तपासा आणि काढणीचे नियोजन करा.",
+  highWind:"वारा जोरात आहे. फवारणी टाळा आणि उंच पिकांना आधार द्या.",
+  hot:"तापमान जास्त आहे. पिकांमधील ओलावा तपासा आणि गरजेनुसार सिंचन करा.",
+  cold:"तापमान कमी आहे. संवेदनशील पिकांचे संरक्षण करा.",
+  rainOK:"मोठ्या पावसाचा संकेत नाही; स्थानिक अंदाज तपासा.",
+  windOK:"सध्या जोरदार वाऱ्याचा संकेत नाही.",
+  tempOK:"तापमानासाठी विशेष इशारा नाही.",
+  days:["रवि","सोम","मंगळ","बुध","गुरु","शुक्र","शनि"],
+  today:"आज",clear:"निरभ्र",cloud:"ढगाळ",fog:"धुके",
+  drizzle:"रिमझिम पाऊस",wet:"पाऊस",storm:"वादळ",snow:"बर्फवृष्टी",
+  updated:"हवामान अद्ययावत",chance:"पावसाची शक्यता"
+ },
+ hi:{
+  title:"किसान मौसम जानकारी",search:"खोजें",city:"शहर का नाम",
+  humidity:"नमी",wind:"हवा की गति",rain:"बारिश",
+  alerts:"🚨 किसान अलर्ट",forecast:"📅 7 दिन का मौसम पूर्वानुमान",
+  loading:"मौसम लोड हो रहा है...",feels:"महसूस होने वाला तापमान",
+  error:"मौसम नहीं मिला। इंटरनेट या शहर का नाम जाँचें।",
+  rainAlert:"बारिश अलर्ट",windAlert:"हवा अलर्ट",
+  tempAlert:"तापमान अलर्ट",highRain:"बारिश की संभावना अधिक है। खेत में जल निकासी जाँचें और कटाई की योजना बनाएँ।",
+  highWind:"हवा तेज है। छिड़काव टालें और ऊँची फसलों को सहारा दें।",
+  hot:"गर्मी अधिक है। मिट्टी की नमी जाँचें और जरूरत के अनुसार सिंचाई करें।",
+  cold:"तापमान कम है। संवेदनशील फसलों की सुरक्षा करें।",
+  rainOK:"भारी बारिश का संकेत नहीं है; स्थानीय पूर्वानुमान देखें।",
+  windOK:"अभी तेज हवा का संकेत नहीं है।",
+  tempOK:"तापमान के लिए विशेष चेतावनी नहीं है।",
+  days:["रवि","सोम","मंगल","बुध","गुरु","शुक्र","शनि"],
+  today:"आज",clear:"साफ आसमान",cloud:"बादल",fog:"कोहरा",
+  drizzle:"हल्की बारिश",wet:"बारिश",storm:"तूफान",snow:"बर्फबारी",
+  updated:"मौसम अपडेट",chance:"बारिश की संभावना"
+ },
+ en:{
+  title:"Farmer Weather Dashboard",search:"Search",city:"Enter city",
+  humidity:"Humidity",wind:"Wind speed",rain:"Rainfall",
+  alerts:"🚨 Farmer Alerts",forecast:"📅 7-Day Forecast",
+  loading:"Loading weather...",feels:"Feels like",
+  error:"Weather unavailable. Check internet or city name.",
+  rainAlert:"Rain Alert",windAlert:"Wind Alert",
+  tempAlert:"Temperature Alert",highRain:"High rain chance. Check field drainage and plan harvesting carefully.",
+  highWind:"Strong winds expected. Avoid spraying and support tall crops.",
+  hot:"High temperatures. Check soil moisture and irrigate as needed.",
+  cold:"Low temperatures. Protect temperature-sensitive crops.",
+  rainOK:"No high-rain signal; check your local forecast.",
+  windOK:"No strong-wind signal at present.",
+  tempOK:"No special temperature warning.",
+  days:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],
+  today:"Today",clear:"Clear",cloud:"Cloudy",fog:"Fog",
+  drizzle:"Drizzle",wet:"Rain",storm:"Thunderstorm",snow:"Snow",
+  updated:"Weather updated",chance:"Rain chance"
+ }
+};
+
+let current=null,daily=null;
+const $=id=>document.getElementById(id);
+function t(key){return translations[$("language").value][key]}
+function setText(id,key){$(id).textContent=t(key)}
+
+function applyLanguage(){
+ const lang=$("language").value;
+ document.documentElement.lang=lang==="mr"?"mr":lang==="hi"?"hi":"en";
+ $("todayLabel").textContent=t("title");
+ $("city").placeholder=t("city");
+ $("search").textContent=t("search");
+ $("alertsTitle").textContent=t("alerts");
+ $("forecastTitle").textContent=t("forecast");
+ document.querySelectorAll("[data-i]").forEach(el=>{
+  el.textContent=t(el.dataset.i);
+ });
+ if(current&&daily)renderWeather();
+ else setText("condition","loading");
+}
+$("language").addEventListener("change",()=>{
+ try{localStorage.setItem("skycast-language",$("language").value)}catch(e){}
+ applyLanguage();
+});
+try{
+ const saved=localStorage.getItem("skycast-language");
+ if(["mr","hi","en"].includes(saved))$("language").value=saved;
+}catch(e){}
+
+function weatherInfo(code,isDay){
+ if(code===0)return ["☀️",t("clear")];
+ if([1,2,3].includes(code))return ["⛅",t("cloud")];
+ if([45,48].includes(code))return ["🌫️",t("fog")];
+ if([51,53,55,56,57].includes(code))return ["🌦️",t("drizzle")];
+ if([61,63,65,66,67,80,81,82].includes(code))return ["🌧️",t("wet")];
+ if([71,73,75,77,85,86].includes(code))return ["❄️",t("snow")];
+ if([95,96,99].includes(code))return ["⛈️",t("storm")];
+ return ["🌤️",t("cloud")];
+}
+
+function renderWeather(){
+ const c=current,d=daily;
+ $("place").textContent=c.location;
+ $("temp").textContent=Math.round(c.temperature_2m)+"°C";
+ $("condition").textContent=weatherInfo(c.weather_code,c.is_day)[1];
+ $("weatherIcon").textContent=weatherInfo(c.weather_code,c.is_day)[0];
+ $("feels").textContent=t("feels")+": "+Math.round(c.apparent_temperature)+"°C";
+ $("humidity").textContent=c.relative_humidity_2m+"%";
+ $("wind").textContent=c.wind_speed_10m+" km/h";
+ $("rain").textContent=c.precipitation+" mm";
+
+ const rainProb=d.precipitation_probability_max[0]??0;
+ const windSpeed=c.wind_speed_10m;
+ const temp=c.temperature_2m;
+ const alerts=[];
+ alerts.push(["🌧️",t("rainAlert"),
+  rainProb>=60?t("highRain"):t("rainOK")+" ("+rainProb+"%)"]);
+ alerts.push(["💨",t("windAlert"),
+  windSpeed>=35?t("highWind"):t("windOK")+" ("+windSpeed+" km/h)"]);
+ alerts.push(["🌡️",t("tempAlert"),
+  temp>=40?t("hot"):temp<=5?t("cold"):t("tempOK")]);
+
+ $("alerts").replaceChildren();
+ alerts.forEach(a=>{
+  const div=document.createElement("div");
+  div.className="alert";
+  const b=document.createElement("b");
+  b.textContent=a[0]+" "+a[1];
+  const p=document.createElement("div");
+  p.textContent=a[2];
+  div.append(b,p);
+  $("alerts").append(div);
+ });
+
+ $("forecast").replaceChildren();
+ d.time.forEach((date,i)=>{
+  const el=document.createElement("div");
+  el.className="day";
+  const weekday=i===0?t("today"):t("days")[new Date(date+"T12:00:00").getDay()];
+  const info=weatherInfo(d.weather_code[i],true);
+  const lines=[
+   weekday,info[0],info[1],
+   Math.round(d.temperature_2m_max[i])+"°",
+   Math.round(d.temperature_2m_min[i])+"°",
+   "🌧️ "+(d.precipitation_probability_max[i]??0)+"%"
+  ];
+  lines.forEach((line,j)=>{
+   const node=document.createElement(j===0?"b":"div");
+   node.textContent=line;
+   if(j===1)node.className="emoji";
+   if(j===2||j===5)node.className="small";
+   el.append(node);
+  });
+  $("forecast").append(el);
+ });
+ $("status").textContent=t("updated")+": "+new Date().toLocaleTimeString();
+}
+
+async function loadWeather(){
+ const city=$("city").value.trim();
+ if(!city)return;
+ $("status").textContent=t("loading");
+ try{
+  const geo=await fetch("https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent(city)+"&count=1&language=en&format=json");
+  if(!geo.ok)throw Error();
+  const locations=await geo.json();
+  if(!locations.results?.length)throw Error();
+  const loc=locations.results[0];
+  const url="https://api.open-meteo.com/v1/forecast?latitude="+loc.latitude+
+   "&longitude="+loc.longitude+
+   "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,wind_speed_10m,weather_code"+
+   "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"+
+   "&timezone=auto&forecast_days=7";
+  const res=await fetch(url);
+  if(!res.ok)throw Error();
+  const data=await res.json();
+  current={...data.current,location:loc.name+", "+(loc.country||"")};
+  daily=data.daily;
+  renderWeather();
+ }catch(e){
+  $("status").textContent=t("error");
+ }
+}
+$("city").addEventListener("keydown",e=>{
+ if(e.key==="Enter")loadWeather();
+});
+applyLanguage();
+loadWeather();
+</script>
+</body>
+</html>
